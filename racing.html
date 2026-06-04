@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>極速賽車 2D</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #111;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Arial Black', Arial, sans-serif;
+        }
+
+        /* 直向提示 */
+        #portrait-warning {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #111;
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            font-size: 20px;
+            text-align: center;
+            gap: 16px;
+        }
+        @media screen and (orientation: portrait) {
+            #portrait-warning { display: flex; }
+        }
+        #portrait-warning .icon { font-size: 60px; animation: spin 2s infinite linear; }
+        @keyframes spin {
+            0%   { transform: rotate(0deg); }
+            25%  { transform: rotate(90deg); }
+            50%  { transform: rotate(90deg); }
+            75%  { transform: rotate(90deg); }
+            100% { transform: rotate(90deg); }
+        }
+
+        /* 遊戲容器 */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        /* HUD 上方資訊 */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px 16px;
+            pointer-events: none;
+        }
+
+        .hud-panel {
+            background: rgba(0,0,0,0.65);
+            border: 1px solid rgba(255,200,0,0.4);
+            border-radius: 8px;
+            padding: 6px 14px;
+            color: #fff;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        .hud-panel span { color: #FFD600; font-weight: bold; }
+
+        #save-status {
+            font-size: 11px;
+            color: #4CAF50;
+            margin-top: 2px;
+        }
+
+        /* 手動存檔按鈕 */
+        #btn-save {
+            pointer-events: auto;
+            background: linear-gradient(135deg, #FF6F00, #FFA000);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+            touch-action: manipulation;
+        }
+        #btn-save:active { filter: brightness(0.85); }
+
+        /* 開始畫面 */
+        #start-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.82);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 12px;
+            z-index: 100;
+        }
+
+        #start-screen h1 {
+            font-size: clamp(24px, 5vw, 40px);
+            color: #FFD600;
+            text-shadow: 0 0 20px rgba(255,214,0,0.7), 2px 2px 0 #000;
+            letter-spacing: 4px;
+        }
+
+        #start-screen p {
+            color: #ccc;
+            font-size: 13px;
+            text-align: center;
+            line-height: 1.7;
+        }
+
+        #start-screen .best {
+            color: #FFD600;
+            font-size: 15px;
+        }
+
+        #btn-start {
+            margin-top: 8px;
+            background: linear-gradient(135deg, #FFD600, #FF6F00);
+            color: #000;
+            border: none;
+            border-radius: 50px;
+            padding: 14px 48px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            letter-spacing: 3px;
+            box-shadow: 0 0 24px rgba(255,180,0,0.5);
+            touch-action: manipulation;
+        }
+        #btn-start:active { filter: brightness(0.85); }
+
+        /* 虛擬搖桿 */
+        .touch-controls {
+            position: absolute;
+            bottom: 14px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            pointer-events: none;
+        }
+
+        /* D-Pad */
+        .d-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 52px);
+            grid-template-rows: repeat(3, 52px);
+            gap: 4px;
+            pointer-events: auto;
+        }
+        #btn-up    { grid-column: 2; grid-row: 1; }
+        #btn-left  { grid-column: 1; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+        #btn-down  { grid-column: 2; grid-row: 3; }
+
+        .btn-touch {
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.5);
+            border-radius: 50%;
+            color: rgba(255,255,255,0.9);
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+            transition: background 0.05s;
+        }
+        .btn-touch.pressed,
+        .btn-touch:active {
+            background: rgba(255,255,255,0.55);
+            color: #000;
+        }
+
+        /* A / B 按鈕 */
+        .action-buttons {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            pointer-events: auto;
+        }
+
+        .btn-action {
+            width: 68px;
+            height: 68px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 50%;
+            border: 3px solid;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none;
+            flex-direction: column;
+            line-height: 1;
+        }
+
+        #btn-b {
+            background: rgba(244,67,54,0.3);
+            border-color: #f44336;
+            color: #ff8a80;
+            margin-top: 24px;
+        }
+        #btn-b .label-sub { font-size: 9px; color: #ff8a80; opacity: 0.8; }
+        #btn-b.pressed, #btn-b:active { background: #f44336; color: #fff; }
+
+        #btn-a {
+            background: rgba(76,175,80,0.3);
+            border-color: #4CAF50;
+            color: #a5d6a7;
+        }
+        #btn-a .label-sub { font-size: 9px; color: #a5d6a7; opacity: 0.8; }
+        #btn-a.pressed, #btn-a:active { background: #4CAF50; color: #fff; }
+    </style>
+</head>
+<body>
+
+<div id="portrait-warning">
+    <div class="icon">📱</div>
+    <div>請將手機<br>旋轉為<strong>橫向</strong>模式遊玩</div>
+</div>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+        <div class="hud-panel">
+            <div>距離：<span id="ui-score">0</span> m</div>
+            <div>最高：<span id="ui-highscore">0</span> m</div>
+            <div>速度：<span id="ui-speed">0</span> km/h</div>
+            <div id="save-status">📁 已存檔</div>
+        </div>
+        <button id="btn-save">💾 存檔</button>
+    </div>
+
+    <!-- 開始畫面 -->
+    <div id="start-screen">
+        <h1>⚡ 極速賽車</h1>
+        <p class="best">最高紀錄：<span id="best-display">0</span> m</p>
+        <p>
+            手機：左下方向鍵移動，A加油 / B煞車<br>
+            電腦：WASD 或方向鍵，Z加油 / X煞車
+        </p>
+        <button id="btn-start">開始遊戲</button>
+    </div>
+
+    <!-- 虛擬按鍵 -->
+    <div class="touch-controls">
+        <div class="d-pad">
+            <div class="btn-touch" id="btn-up">▲</div>
+            <div class="btn-touch" id="btn-left">◀</div>
+            <div class="btn-touch" id="btn-right">▶</div>
+            <div class="btn-touch" id="btn-down">▼</div>
+        </div>
+        <div class="action-buttons">
+            <div class="btn-touch btn-action" id="btn-b">
+                B<div class="label-sub">煞車</div>
+            </div>
+            <div class="btn-touch btn-action" id="btn-a">
+                A<div class="label-sub">加油</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ─── Canvas 初始化 ───────────────────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+
+// 邏輯解析度（固定，CSS 縮放）
+const W = 800;
+const H = 450;
+canvas.width  = W;
+canvas.height = H;
+
+// 賽道參數
+const ROAD_LEFT  = 180;
+const ROAD_RIGHT = 620;
+const ROAD_W     = ROAD_RIGHT - ROAD_LEFT;   // 440
+
+// ─── 存檔 ────────────────────────────────────────────────────────
+const SAVE_KEY = 'racing2d_v2';
+
+let highScore = 0;
+
+function loadSave() {
+    try {
+        const d = JSON.parse(localStorage.getItem(SAVE_KEY));
+        if (d) highScore = d.highScore || 0;
+    } catch(e) {}
+    updateHighScoreUI();
+}
+
+function saveData(isAuto) {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ highScore }));
+    updateHighScoreUI();
+    const el = document.getElementById('save-status');
+    el.textContent = isAuto ? '📁 已自動存檔' : '✅ 手動存檔成功！';
+    el.style.color = isAuto ? '#4CAF50' : '#00BCD4';
+    if (!isAuto) setTimeout(() => { el.textContent = '📁 已存檔'; el.style.color = '#4CAF50'; }, 2000);
+}
+
+function updateHighScoreUI() {
+    document.getElementById('ui-highscore').textContent = Math.floor(highScore);
+    document.getElementById('best-display').textContent  = Math.floor(highScore);
+}
+
+document.getElementById('btn-save').addEventListener('click', () => saveData(false));
+
+// ─── 輸入管理 ────────────────────────────────────────────────────
+const keys = { up:false, down:false, left:false, right:false, a:false, b:false };
+
+const KEY_MAP = {
+    ArrowUp:'up', w:'up', W:'up',
+    ArrowDown:'down', s:'down', S:'down',
+    ArrowLeft:'left',
+    ArrowRight:'right', d:'right', D:'right',
+    z:'a', Z:'a', j:'a', J:'a',
+    x:'b', X:'b', k:'b', K:'b',
+};
+
+window.addEventListener('keydown', e => { if (KEY_MAP[e.key]) { keys[KEY_MAP[e.key]] = true; e.preventDefault(); } });
+window.addEventListener('keyup',   e => { if (KEY_MAP[e.key]) keys[KEY_MAP[e.key]] = false; });
+
+// 觸控綁定（支援多點）
+function bindTouch(id, key) {
+    const el = document.getElementById(id);
+    const on  = e => { e.preventDefault(); keys[key] = true;  el.classList.add('pressed'); };
+    const off = e => { e.preventDefault(); keys[key] = false; el.classList.remove('pressed'); };
+    el.addEventListener('touchstart',  on,  { passive:false });
+    el.addEventListener('touchend',    off, { passive:false });
+    el.addEventListener('touchcancel', off, { passive:false });
+}
+
+bindTouch('btn-up',    'up');
+bindTouch('btn-down',  'down');
+bindTouch('btn-left',  'left');
+bindTouch('btn-right', 'right');
+bindTouch('btn-a',     'a');
+bindTouch('btn-b',     'b');
+
+// ─── 遊戲物件 ────────────────────────────────────────────────────
+const car = {
+    x: W / 2 - 20,
+    y: H - 100,
+    w: 36,
+    h: 64,
+    speed:    0,
+    maxSpeed: 14,
+    accel:    0.18,
+    decel:    0.06,
+    brake:    0.45,
+    handling: 4.5,
+};
+
+// 障礙車
+const enemies = [];
+// 路邊裝飾（樹、標誌等）
+const decorations = [];
+// 得分
+let score = 0;
+let frameCount = 0;
+let trackOffset = 0;
+let gameRunning = false;
+let lastAutoSave = 0;
+// 速度提升倍率（隨時間加快）
+let diffScale = 1;
+
+// ─── 粒子（撞擊特效）────────────────────────────────────────────
+const particles = [];
+
+function spawnParticles(x, y) {
+    for (let i = 0; i < 18; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 2 + Math.random() * 5;
+        particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 1.0,
+            color: `hsl(${30 + Math.random()*40},100%,60%)`,
+        });
+    }
+}
+
+// ─── 障礙車生成 ──────────────────────────────────────────────────
+const CAR_COLORS = ['#e53935','#8e24aa','#1e88e5','#fb8c00','#00897b','#fdd835'];
+
+function spawnEnemy() {
+    const w = 34 + Math.random() * 18;
+    const h = 56 + Math.random() * 14;
+    const x = ROAD_LEFT + 10 + Math.random() * (ROAD_W - w - 20);
+    enemies.push({
+        x, y: -h - 10,
+        w, h,
+        color: CAR_COLORS[Math.floor(Math.random() * CAR_COLORS.length)],
+        // 對向車（偶爾快速從上方衝下來）
+        extra: Math.random() < 0.15,
+    });
+}
+
+// 路邊裝飾生成
+function spawnDeco() {
+    // 左右各生成一棵樹
+    decorations.push({ x: 20 + Math.random() * (ROAD_LEFT - 50), y: -20, type: 'tree' });
+    decorations.push({ x: ROAD_RIGHT + 10 + Math.random() * (W - ROAD_RIGHT - 40), y: -20, type: 'tree' });
+}
+
+// ─── 繪圖函式 ────────────────────────────────────────────────────
+
+// 賽車（帶車燈、車牌）
+function drawCar(x, y, w, h, color, isPlayer) {
+    const r = 4;
+
+    // 車身
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fill();
+
+    // 車頂艙
+    ctx.fillStyle = isPlayer ? '#1565C0' : darken(color);
+    const roofW = w * 0.6;
+    const roofH = h * 0.4;
+    ctx.beginPath();
+    ctx.roundRect(x + (w - roofW) / 2, y + h * 0.18, roofW, roofH, 3);
+    ctx.fill();
+
+    // 擋風玻璃
+    ctx.fillStyle = 'rgba(180,220,255,0.75)';
+    ctx.beginPath();
+    ctx.roundRect(x + (w - roofW) / 2 + 3, y + h * 0.2, roofW - 6, roofH * 0.5, 2);
+    ctx.fill();
+
+    // 前後燈
+    if (isPlayer) {
+        // 後燈（紅）
+        ctx.fillStyle = '#FF1744';
+        ctx.fillRect(x + 3,     y + h - 8, 8, 5);
+        ctx.fillRect(x + w - 11, y + h - 8, 8, 5);
+    } else {
+        // 前燈（白）
+        ctx.fillStyle = '#FFFDE7';
+        ctx.fillRect(x + 3,      y + 3, 8, 5);
+        ctx.fillRect(x + w - 11, y + 3, 8, 5);
+    }
+
+    // 車輪（4個）
+    ctx.fillStyle = '#212121';
+    const wheelW = 6, wheelH = 14;
+    ctx.fillRect(x - wheelW + 1,  y + 10,       wheelW, wheelH);
+    ctx.fillRect(x + w - 1,        y + 10,       wheelW, wheelH);
+    ctx.fillRect(x - wheelW + 1,  y + h - 10 - wheelH, wheelW, wheelH);
+    ctx.fillRect(x + w - 1,        y + h - 10 - wheelH, wheelW, wheelH);
+    // 輪轂
+    ctx.fillStyle = '#616161';
+    const hubW = 4, hubH = 8;
+    ctx.fillRect(x - wheelW + 2,   y + 13,       hubW, hubH);
+    ctx.fillRect(x + w,             y + 13,       hubW, hubH);
+    ctx.fillRect(x - wheelW + 2,   y + h - 10 - hubH - 3, hubW, hubH);
+    ctx.fillRect(x + w,             y + h - 10 - hubH - 3, hubW, hubH);
+}
+
+// 讓顏色暗一點
+function darken(hex) {
+    const num = parseInt(hex.replace('#',''), 16);
+    const r = Math.max(0, (num >> 16) - 50);
+    const g = Math.max(0, ((num >> 8) & 0xff) - 50);
+    const b = Math.max(0, (num & 0xff) - 50);
+    return `rgb(${r},${g},${b})`;
+}
+
+// 樹
+function drawTree(x, y) {
+    // 樹幹
+    ctx.fillStyle = '#5D4037';
+    ctx.fillRect(x - 3, y + 12, 6, 10);
+    // 樹冠
+    ctx.fillStyle = '#2E7D32';
+    ctx.beginPath();
+    ctx.arc(x, y + 8, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#388E3C';
+    ctx.beginPath();
+    ctx.arc(x, y, 10, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+// ─── 遊戲更新 ────────────────────────────────────────────────────
+function update() {
+    if (!gameRunning) return;
+    frameCount++;
+
+    // 難度隨時間上升
+    diffScale = 1 + score * 0.0008;
+
+    // 加速 / 煞車
+    if      (keys.a) car.speed = Math.min(car.speed + car.accel, car.maxSpeed * diffScale);
+    else if (keys.b) car.speed = Math.max(car.speed - car.brake, 0);
+    else             car.speed = Math.max(car.speed - car.decel, 0);
+
+    // 方向移動（需要有速度）
+    if (car.speed > 0.5) {
+        if (keys.left)  car.x -= car.handling;
+        if (keys.right) car.x += car.handling;
+        if (keys.up)    car.y -= car.handling * 0.6;
+        if (keys.down)  car.y += car.handling * 0.6;
+    }
+
+    // 邊界
+    car.x = Math.max(ROAD_LEFT,  Math.min(ROAD_RIGHT - car.w, car.x));
+    car.y = Math.max(0,          Math.min(H - car.h,           car.y));
+
+    // 賽道偏移與得分
+    trackOffset += car.speed;
+    if (car.speed > 0) {
+        score += car.speed * 0.045;
+        document.getElementById('ui-score').textContent = Math.floor(score);
+        document.getElementById('ui-speed').textContent = Math.floor(car.speed * 20);
+
+        // 自動存檔（每 200m）
+        if (Math.floor(score) - lastAutoSave >= 200) {
+            lastAutoSave = Math.floor(score);
+            if (score > highScore) highScore = score;
+            saveData(true);
+        }
+    }
+
+    // 生成障礙物（速度越快 spawn 越頻繁）
+    const spawnInterval = Math.max(35, Math.floor(75 / diffScale));
+    if (car.speed > 1 && frameCount % spawnInterval === 0) spawnEnemy();
+
+    // 生成裝飾
+    if (frameCount % 80 === 0) spawnDeco();
+
+    // 更新裝飾
+    for (let i = decorations.length - 1; i >= 0; i--) {
+        decorations[i].y += car.speed * 0.8;
+        if (decorations[i].y > H + 30) decorations.splice(i, 1);
+    }
+
+    // 更新障礙物 + 碰撞
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const e = enemies[i];
+        const spd = e.extra ? car.speed * 1.8 + 4 : car.speed + 0.5;
+        e.y += spd;
+
+        // AABB 碰撞（縮小一點寬容）
+        const pad = 4;
+        if (
+            car.x + pad < e.x + e.w - pad &&
+            car.x + car.w - pad > e.x + pad &&
+            car.y + pad < e.y + e.h - pad &&
+            car.y + car.h - pad > e.y + pad
+        ) {
+            spawnParticles(car.x + car.w / 2, car.y + car.h / 2);
+            gameOver();
+            return;
+        }
+
+        if (e.y > H + 30) enemies.splice(i, 1);
+    }
+
+    // 更新粒子
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy;
+        p.vy += 0.15;
+        p.life -= 0.04;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+// ─── 繪製 ────────────────────────────────────────────────────────
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // 草地
+    ctx.fillStyle = '#388E3C';
+    ctx.fillRect(0, 0, W, H);
+
+    // 草地細紋
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < H; y += 30) {
+        ctx.beginPath();
+        ctx.moveTo(0, y); ctx.lineTo(W, y);
+        ctx.stroke();
+    }
+
+    // 路面
+    ctx.fillStyle = '#4A4A4A';
+    ctx.fillRect(ROAD_LEFT, 0, ROAD_W, H);
+
+    // 路面紋理（淡橫線）
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    const texOff = trackOffset % 20;
+    for (let y = -20 + texOff; y < H; y += 20) {
+        ctx.beginPath(); ctx.moveTo(ROAD_LEFT, y); ctx.lineTo(ROAD_RIGHT, y); ctx.stroke();
+    }
+
+    // 路緣石（左右交替紅白）
+    const stripeH = 40;
+    const sOff = trackOffset % (stripeH * 2);
+    for (let y = -stripeH * 2; y < H + stripeH; y += stripeH) {
+        const cy = y + sOff;
+        const isRed = Math.floor((y + trackOffset) / stripeH) % 2 === 0;
+        ctx.fillStyle = isRed ? '#E53935' : '#FAFAFA';
+        ctx.fillRect(ROAD_LEFT - 12, cy, 12, stripeH);
+        ctx.fillRect(ROAD_RIGHT,     cy, 12, stripeH);
+    }
+
+    // 中央虛線
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 5;
+    ctx.setLineDash([28, 24]);
+    ctx.lineDashOffset = -(trackOffset % 52);
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 0);
+    ctx.lineTo(W / 2, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 裝飾
+    decorations.forEach(d => {
+        if (d.type === 'tree') drawTree(d.x, d.y);
+    });
+
+    // 障礙車
+    enemies.forEach(e => {
+        drawCar(e.x, e.y, e.w, e.h, e.color, false);
+        // 對向車標記
+        if (e.extra) {
+            ctx.fillStyle = 'rgba(255,50,50,0.85)';
+            ctx.beginPath();
+            ctx.arc(e.x + e.w / 2, e.y - 12, 6, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    // 玩家車
+    drawCar(car.x, car.y, car.w, car.h, '#1E88E5', true);
+
+    // 速度感光線（高速時）
+    if (car.speed > 8) {
+        const alpha = Math.min((car.speed - 8) / 6, 0.5);
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H * 0.3);
+    }
+
+    // 粒子
+    particles.forEach(p => {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2);
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+}
+
+// ─── 主循環 ──────────────────────────────────────────────────────
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+// ─── 遊戲流程 ────────────────────────────────────────────────────
+function startGame() {
+    // 重置
+    car.x     = W / 2 - car.w / 2;
+    car.y     = H - 100;
+    car.speed = 0;
+    enemies.length      = 0;
+    decorations.length  = 0;
+    particles.length    = 0;
+    score        = 0;
+    frameCount   = 0;
+    trackOffset  = 0;
+    lastAutoSave = 0;
+    diffScale    = 1;
+    document.getElementById('ui-score').textContent = '0';
+    document.getElementById('ui-speed').textContent = '0';
+
+    document.getElementById('start-screen').style.display = 'none';
+    gameRunning = true;
+}
+
+function gameOver() {
+    gameRunning = false;
+    if (score > highScore) highScore = score;
+    saveData(true);
+
+    // 短暫延遲後顯示結果
+    setTimeout(() => {
+        document.getElementById('best-display').textContent = Math.floor(highScore);
+        const ss = document.getElementById('start-screen');
+        ss.innerHTML = `
+            <h1>💥 撞車了！</h1>
+            <p class="best">本次：<span style="color:#FFD600">${Math.floor(score)} m</span></p>
+            <p class="best">最高：<span style="color:#FFD600">${Math.floor(highScore)} m</span></p>
+            <button id="btn-start" style="margin-top:12px;background:linear-gradient(135deg,#FFD600,#FF6F00);color:#000;border:none;border-radius:50px;padding:14px 48px;font-size:18px;font-weight:bold;letter-spacing:3px;cursor:pointer;">再玩一次</button>
+        `;
+        ss.style.display = 'flex';
+        document.getElementById('btn-start').addEventListener('click', startGame);
+    }, 400);
+}
+
+// 開始按鈕
+document.getElementById('btn-start').addEventListener('click', startGame);
+
+// ─── 啟動 ────────────────────────────────────────────────────────
+loadSave();
+loop();
+</script>
+</body>
+</html>
